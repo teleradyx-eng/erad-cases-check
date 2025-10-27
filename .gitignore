@@ -1,0 +1,5 @@
+node_modules
+.env
+case-monitor.log
+alert-status.json
+email-body.txt
