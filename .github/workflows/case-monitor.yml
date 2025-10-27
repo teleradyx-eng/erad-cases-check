@@ -1,0 +1,85 @@
+name: Case Monitor
+
+on:
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  monitor-cases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Get Puppeteer version
+      id: puppeteer-version
+      run: |
+        echo "version=$(node -p "require('./package.json').dependencies.puppeteer")" >> $GITHUB_OUTPUT
+    
+    - name: Cache Puppeteer browser
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/puppeteer
+        key: ${{ runner.os }}-puppeteer-${{ steps.puppeteer-version.outputs.version }}
+        restore-keys: |
+          ${{ runner.os }}-puppeteer-
+    
+    - name: Install dependencies
+      run: npm ci
+      env:
+        PUPPETEER_SKIP_DOWNLOAD: 'false'
+    
+    - name: Run case monitor
+      env:
+        PORTAL_USERNAME: ${{ secrets.PORTAL_USERNAME }}
+        PORTAL_PASSWORD: ${{ secrets.PORTAL_PASSWORD }}
+        CI: 'true'
+      run: node case-monitor.js
+    
+    - name: Check if cases found
+      id: check_alert
+      run: |
+        if [ -f alert-status.json ]; then
+          HAS_CASES=$(cat alert-status.json | jq -r '.hasCases')
+          CASES_FOUND=$(cat alert-status.json | jq -r '.casesFound')
+          MESSAGE=$(cat alert-status.json | jq -r '.formattedMessage')
+          echo "has_cases=$HAS_CASES" >> $GITHUB_OUTPUT
+          echo "cases_found=$CASES_FOUND" >> $GITHUB_OUTPUT
+          echo "Cases found: $CASES_FOUND"
+          # Save message to file for email body
+          echo "$MESSAGE" > email-body.txt
+        else
+          echo "has_cases=false" >> $GITHUB_OUTPUT
+          echo "cases_found=0" >> $GITHUB_OUTPUT
+          echo "No alert file found"
+        fi
+    
+    - name: Send email alert
+      if: steps.check_alert.outputs.has_cases == 'true'
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: ${{ secrets.SMTP_SERVER }}
+        server_port: ${{ secrets.SMTP_PORT }}
+        username: ${{ secrets.SMTP_USERNAME }}
+        password: ${{ secrets.SMTP_PASSWORD }}
+        subject: "🚨 Teleradyx Cases Alert - ${{ steps.check_alert.outputs.cases_found }} Cases Found"
+        body: file://email-body.txt
+        to: danialkafeel@gmail.com, mohdusman586@gmail.com, deepu004147@gmail.com
+        from: Teleradyx Case Monitor
+        content_type: text/plain
+    
+    - name: Commit case history
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add case-history.csv
+        git diff --staged --quiet || git commit -m "Update case counts [skip ci]"
+        git push
