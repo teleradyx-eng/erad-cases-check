@@ -1,0 +1,27 @@
+{
+  "name": "teleradyx-cases-check",
+  "version": "1.0.0",
+  "description": "Automated monitoring system for erad portal cases",
+  "main": "case-monitor.js",
+  "scripts": {
+    "start": "node case-monitor.js",
+    "test": "node test-selectors.js",
+    "dev": "nodemon case-monitor.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.5.2",
+    "dotenv": "^16.3.1",
+    "fs-extra": "^11.1.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "automation",
+    "monitoring",
+    "web-scraping",
+    "puppeteer"
+  ],
+  "author": "",
+  "license": "MIT"
+}
