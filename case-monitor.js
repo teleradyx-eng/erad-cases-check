@@ -336,7 +336,7 @@ class CaseMonitor {
          */
         try {
             const alertData = {
-                hasCases: currentCount > 0,
+                hasCases: currentCount > 1,
                 casesFound: currentCount,
                 timestamp: new Date().toISOString(),
                 worklists: worklists,
