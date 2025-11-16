@@ -104,7 +104,7 @@ jobs:
         password: ${{ secrets.SMTP_PASSWORD }}
         subject: "🚨 Teleradyx Cases Alert - ${{ steps.process_alerts.outputs.doctors }} - ${{ steps.process_alerts.outputs.total_cases }} Total Cases"
         body: file://combined-email-body.txt
-        to: danialkafeel@gmail.com, mohdusman586@gmail.com, deepu004147@gmail.com
+        to: danialkafeel@gmail.com, mohdusman586@gmail.com, deepu004147@gmail.com, mohdusaid53@gmail.com
         from: Teleradyx Case Monitor
         content_type: text/plain
     
