@@ -1,11 +1,1 @@
-{
-  "hasCases": true,
-  "casesFound": 3,
-  "timestamp": "2025-11-16T14:06:35.325Z",
-  "doctorName": "Dr. Abdaallah",
-  "worklists": {
-    "A##MY LIST": 3,
-    "UNVIEWED": 6
-  },
-  "formattedMessage": "📊 Case Count Report - Dr. Abdaallah\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n👨‍⚕️ Rad: Dr. Abdaallah\n\n📋 WORKLIST DETAILS:\n\n  • A##MY LIST: 3 cases\n  • UNVIEWED: 6 cases\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n📈 TOTAL CASES: 3\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-}
+
