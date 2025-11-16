@@ -41,47 +41,77 @@ jobs:
     
     - name: Run case monitor
       env:
-        PORTAL_USERNAME: ${{ secrets.PORTAL_USERNAME }}
-        PORTAL_PASSWORD: ${{ secrets.PORTAL_PASSWORD }}
+        DOCTOR1_USERNAME: ${{ secrets.DOCTOR1_USERNAME }}
+        DOCTOR1_PASSWORD: ${{ secrets.DOCTOR1_PASSWORD }}
+        DOCTOR2_USERNAME: ${{ secrets.DOCTOR2_USERNAME }}
+        DOCTOR2_PASSWORD: ${{ secrets.DOCTOR2_PASSWORD }}
         CI: 'true'
       run: node case-monitor.js
     
-    - name: Check if cases found
-      id: check_alert
+    - name: Process alert files
+      id: process_alerts
       run: |
-        if [ -f alert-status.json ]; then
-          HAS_CASES=$(cat alert-status.json | jq -r '.hasCases')
-          CASES_FOUND=$(cat alert-status.json | jq -r '.casesFound')
-          MESSAGE=$(cat alert-status.json | jq -r '.formattedMessage')
-          echo "has_cases=$HAS_CASES" >> $GITHUB_OUTPUT
-          echo "cases_found=$CASES_FOUND" >> $GITHUB_OUTPUT
-          echo "Cases found: $CASES_FOUND"
-          # Save message to file for email body
-          echo "$MESSAGE" > email-body.txt
+        # Find all alert files and process them
+        COMBINED_MESSAGE=""
+        TOTAL_CASES=0
+        DOCTORS_WITH_CASES=""
+        
+        for alert_file in alert-status-*.json; do
+          if [ -f "$alert_file" ]; then
+            echo "Processing $alert_file"
+            
+            HAS_CASES=$(cat "$alert_file" | jq -r '.hasCases')
+            CASES_FOUND=$(cat "$alert_file" | jq -r '.casesFound')
+            DOCTOR_NAME=$(cat "$alert_file" | jq -r '.doctorName')
+            MESSAGE=$(cat "$alert_file" | jq -r '.formattedMessage')
+            
+            echo "Doctor: $DOCTOR_NAME"
+            echo "Has cases: $HAS_CASES"
+            echo "Cases found: $CASES_FOUND"
+            
+            if [ "$HAS_CASES" = "true" ]; then
+              TOTAL_CASES=$((TOTAL_CASES + CASES_FOUND))
+              if [ -n "$DOCTORS_WITH_CASES" ]; then
+                DOCTORS_WITH_CASES="${DOCTORS_WITH_CASES}, ${DOCTOR_NAME}"
+                COMBINED_MESSAGE="${COMBINED_MESSAGE}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n${MESSAGE}"
+              else
+                DOCTORS_WITH_CASES="${DOCTOR_NAME}"
+                COMBINED_MESSAGE="${MESSAGE}"
+              fi
+            fi
+          fi
+        done
+        
+        # Save combined message to file
+        if [ -n "$COMBINED_MESSAGE" ]; then
+          echo -e "$COMBINED_MESSAGE" > combined-email-body.txt
+          echo "has_alerts=true" >> $GITHUB_OUTPUT
+          echo "total_cases=${TOTAL_CASES}" >> $GITHUB_OUTPUT
+          echo "doctors=${DOCTORS_WITH_CASES}" >> $GITHUB_OUTPUT
         else
-          echo "has_cases=false" >> $GITHUB_OUTPUT
-          echo "cases_found=0" >> $GITHUB_OUTPUT
-          echo "No alert file found"
+          echo "has_alerts=false" >> $GITHUB_OUTPUT
+          echo "total_cases=0" >> $GITHUB_OUTPUT
+          echo "No alerts to send"
         fi
     
-    - name: Send email alert
-      if: steps.check_alert.outputs.has_cases == 'true'
+    - name: Send combined email alert
+      if: steps.process_alerts.outputs.has_alerts == 'true'
       uses: dawidd6/action-send-mail@v3
       with:
         server_address: ${{ secrets.SMTP_SERVER }}
         server_port: ${{ secrets.SMTP_PORT }}
         username: ${{ secrets.SMTP_USERNAME }}
         password: ${{ secrets.SMTP_PASSWORD }}
-        subject: "🚨 Teleradyx Cases Alert - ${{ steps.check_alert.outputs.cases_found }} Cases Found"
-        body: file://email-body.txt
+        subject: "🚨 Teleradyx Cases Alert - ${{ steps.process_alerts.outputs.doctors }} - ${{ steps.process_alerts.outputs.total_cases }} Total Cases"
+        body: file://combined-email-body.txt
         to: danialkafeel@gmail.com, mohdusman586@gmail.com, deepu004147@gmail.com
         from: Teleradyx Case Monitor
         content_type: text/plain
     
-    - name: Commit case history
+    - name: Commit case history files
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
-        git add case-history.csv
-        git diff --staged --quiet || git commit -m "Update case counts [skip ci]"
+        git add case-history-*.csv
+        git diff --staged --quiet || git commit -m "Update case counts for all doctors [skip ci]"
         git push

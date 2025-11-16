@@ -11,48 +11,16 @@ const path = require('path');
 require('dotenv').config();
 
 class CaseMonitor {
-    constructor() {
+    constructor(doctorName, username = null, password = null) {
         this.portalUrl = 'https://eradwl.innovativeradiologypc.com/Evo/#login:';
-        this.username = process.env.PORTAL_USERNAME;
-        this.password = process.env.PORTAL_PASSWORD;
-        this.historyFile = 'case-history.csv';
+        this.doctorName = doctorName;
+        this.username = username;
+        this.password = password;
+        this.historyFile = `case-history-${doctorName.toLowerCase().replace(/\s+/g, '-')}.csv`;
+        this.alertFile = `alert-status-${doctorName.toLowerCase().replace(/\s+/g, '-')}.json`;
         
-        if (!this.username || !this.password) {
-            throw new Error('PORTAL_USERNAME and PORTAL_PASSWORD must be set in environment variables');
-        }
-        
-        this.setupLogging();
-    }
-    
-    setupLogging() {
-        // Simple logging setup
-        this.log = {
-            info: (message) => {
-                const timestamp = new Date().toISOString();
-                const logMessage = `${timestamp} - INFO - ${message}`;
-                console.log(logMessage);
-                this.writeToLogFile(logMessage);
-            },
-            error: (message) => {
-                const timestamp = new Date().toISOString();
-                const logMessage = `${timestamp} - ERROR - ${message}`;
-                console.error(logMessage);
-                this.writeToLogFile(logMessage);
-            },
-            warning: (message) => {
-                const timestamp = new Date().toISOString();
-                const logMessage = `${timestamp} - WARNING - ${message}`;
-                console.warn(logMessage);
-                this.writeToLogFile(logMessage);
-            }
-        };
-    }
-    
-    writeToLogFile(message) {
-        try {
-            fs.appendFileSync('case-monitor.log', message + '\n');
-        } catch (error) {
-            // Ignore file write errors to prevent infinite loops
+        if (!this.doctorName || !this.username || !this.password) {
+            throw new Error(`Username and password must be provided for ${doctorName}`);
         }
     }
     
@@ -95,11 +63,11 @@ class CaseMonitor {
             // Set user agent
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             
-            this.log.info(`Browser launched in ${isCI ? 'CI (headless)' : 'local (headed)'} mode`);
+            console.log(`Browser launched in ${isCI ? 'CI (headless)' : 'local (headed)'} mode`);
             
             return { browser, page };
         } catch (error) {
-            this.log.error(`Failed to setup browser: ${error.message}`);
+            console.error(`Failed to setup browser: ${error.message}`);
             throw error;
         }
     }
@@ -109,7 +77,7 @@ class CaseMonitor {
          * Login to the erad portal
          */
         try {
-            this.log.info('Navigating to portal login page');
+            console.log('Navigating to portal login page');
             await page.goto(this.portalUrl, { 
                 waitUntil: 'domcontentloaded',
                 timeout: 60000 
@@ -119,13 +87,13 @@ class CaseMonitor {
             await page.waitForTimeout(3000);
             
             // Wait for login form to load - look for "Log in to your account" text
-            this.log.info('Waiting for login form with "Log in to your account" text');
+            console.log('Waiting for login form with "Log in to your account" text');
             await page.waitForFunction(() => {
                 const divs = Array.from(document.querySelectorAll('div'));
                 return divs.some(div => div.textContent.includes('Log in to your account'));
             }, { timeout: 30000 });
             
-            this.log.info('Login form loaded, entering credentials');
+            console.log('Login form loaded, entering credentials');
             
             // Enter username
             await page.waitForSelector('input[type="text"][class="Input"][name="userid"]', { timeout: 10000 });
@@ -136,7 +104,7 @@ class CaseMonitor {
             await page.type('input[type="password"][class="Input"][name="passwd"]', this.password);
             
             // Click the login button (div with classes .Button .LoginButton and text "Log In")
-            this.log.info('Clicking login button');
+            console.log('Clicking login button');
             await page.evaluate(() => {
                 const buttons = Array.from(document.querySelectorAll('.Button.LoginButton'));
                 const loginButton = buttons.find(btn => btn.textContent.trim() === 'Log In');
@@ -146,18 +114,18 @@ class CaseMonitor {
             });
             
             // Wait for 15 seconds after clicking login
-            this.log.info('Waiting 15 seconds for login to process');
+            console.log('Waiting 15 seconds for login to process');
             await page.waitForTimeout(15000);
             
             // Wait for the eRad div to appear (confirms successful login)
-            this.log.info('Waiting for eRad portal to load');
+            console.log('Waiting for eRad portal to load');
             await page.waitForSelector('div.gwt-HTML.eRad[style*="display: inline-block"]', { timeout: 20000 });
             
-            this.log.info('Successfully logged in to portal');
+            console.log('Successfully logged in to portal');
             return true;
             
         } catch (error) {
-            this.log.error(`Login failed: ${error.message}`);
+            console.error(`Login failed: ${error.message}`);
             return false;
         }
     }
@@ -175,23 +143,23 @@ class CaseMonitor {
             await page.waitForTimeout(2000);
             
             // Find and click the worklist
-            this.log.info(`Opening worklist: ${worklistName}`);
+            console.log(`Opening worklist: ${worklistName}`);
             const worklist = await page.evaluateHandle((name) => {
                 const labels = Array.from(document.querySelectorAll('.gwt-Label.epserv-ListLabel'));
                 return labels.find(label => label.textContent.trim() === name);
             }, worklistName);
             
             if (!worklist) {
-                this.log.warning(`Could not find ${worklistName} worklist`);
+                console.warn(`Could not find ${worklistName} worklist`);
                 return null;
             }
             
             await worklist.click();
-            this.log.info(`Clicked ${worklistName}, waiting 15 seconds for data to load`);
+            console.log(`Clicked ${worklistName}, waiting 15 seconds for data to load`);
             await page.waitForTimeout(15000);
             
             // Count cases in the worklist
-            this.log.info(`Counting cases in ${worklistName}`);
+            console.info(`Counting cases in ${worklistName}`);
             const count = await page.evaluate((name) => {
                 const innerRows = Array.from(document.querySelectorAll('.InnerRow'));
                 console.log('DEBUG: Found', innerRows.length, 'InnerRow elements');
@@ -214,11 +182,11 @@ class CaseMonitor {
                 return null;
             }, worklistName);
             
-            this.log.info(`${worklistName} case count: ${count !== null ? count : 'Not found'}`);
+            console.info(`${worklistName} case count: ${count !== null ? count : 'Not found'}`);
             return count;
             
         } catch (error) {
-            this.log.error(`Failed to process ${worklistName}: ${error.message}`);
+            console.error(`Failed to process ${worklistName}: ${error.message}`);
             return null;
         }
     }
@@ -229,35 +197,27 @@ class CaseMonitor {
          * Returns object with individual worklist counts and total
          */
         try {
-            this.log.info('Starting worklist case count extraction');
+            console.info('Starting worklist case count extraction');
             
             // Wait for dropdown to be available
             await page.waitForSelector('.FILTER_DOWN', { timeout: 10000 });
             
             // Process each worklist
             const count1 = await this.openWorklistAndCount(page, 'A##MY LIST');
-            const count2 = await this.openWorklistAndCount(page, 'CT ASSIGN');
-            const count3 = await this.openWorklistAndCount(page, 'UNVIEWED');
+            const count2 = await this.openWorklistAndCount(page, 'UNVIEWED');
             
             // Build worklist counts object
             const worklistCounts = {
                 'A##MY LIST': count1 !== null ? count1 : 0,
-                'CT ASSIGN': count2 !== null ? count2 : 0,
-                'UNVIEWED': count3 !== null ? count3 : 0
+                'UNVIEWED': count2 !== null ? count2 : 0
             };
             
             // Calculate total count
-            let totalCount = 0;
-            if (count1 !== null) {
-                totalCount += count1;
-            }
-            if (count2 !== null) {
-                totalCount += count2;
-            }
+            let totalCount = count1 !== null ? count1 : 0;
             
             // Return null if all failed
-            if (count1 === null && count2 === null && count3 === null) {
-                this.log.warning('Could not extract case counts from any worklist');
+            if (count1 === null && count2 === null) {
+                console.warning('Could not extract case counts from any worklist');
                 return null;
             }
             
@@ -267,7 +227,7 @@ class CaseMonitor {
             };
             
         } catch (error) {
-            this.log.error(`Failed to get case count: ${error.message}`);
+            console.error(`Failed to get case count: ${error.message}`);
             return null;
         }
     }
@@ -290,19 +250,21 @@ class CaseMonitor {
         return istDate.replace(',', '');
     }
     
-    async ensureCSVHeader() {
+    async ensureCSVHeader(worklistCounts) {
         /**
-         * Ensure CSV file has header row
+         * Ensure CSV file has header row with dynamic columns
          */
         try {
             const fileExists = await fs.pathExists(this.historyFile);
             if (!fileExists) {
-                const header = 'Time,ASS MY LIST,CT ASSIGN,UNVIEWED\n';
+                // Generate header dynamically from worklist names
+                const worklistNames = Object.keys(worklistCounts);
+                const header = `Time,${worklistNames.join(',')}\n`;
                 await fs.writeFile(this.historyFile, header);
-                this.log.info('Created CSV history file with header');
+                console.info('Created CSV history file with header');
             }
         } catch (error) {
-            this.log.error(`Could not create CSV header: ${error.message}`);
+            console.error(`Could not create CSV header: ${error.message}`);
         }
     }
     
@@ -312,21 +274,22 @@ class CaseMonitor {
          */
         try {
             // Ensure header exists
-            await this.ensureCSVHeader();
+            await this.ensureCSVHeader(worklistCounts);
             
             // Format timestamp to IST
             const now = new Date();
             const istTime = this.formatToIST(now);
             
-            // Create CSV row (without total, with UNVIEWED as last column)
-            const csvRow = `${istTime},${worklistCounts['A##MY LIST']},${worklistCounts['CT ASSIGN']},${worklistCounts['UNVIEWED']}\n`;
+            // Create CSV row dynamically from worklist counts
+            const worklistValues = Object.values(worklistCounts);
+            const csvRow = `${istTime},${worklistValues.join(',')}\n`;
             
             // Append to file
             await fs.appendFile(this.historyFile, csvRow);
-            this.log.info(`Saved to CSV: ${istTime} | Total: ${totalCount}`);
+            console.info(`Saved to CSV: ${istTime} | Total: ${totalCount}`);
             
         } catch (error) {
-            this.log.error(`Could not save to history: ${error.message}`);
+            console.error(`Could not save to history: ${error.message}`);
         }
     }
     
@@ -339,35 +302,32 @@ class CaseMonitor {
                 hasCases: currentCount > 1,
                 casesFound: currentCount,
                 timestamp: new Date().toISOString(),
+                doctorName: this.doctorName,
                 worklists: worklists,
                 formattedMessage: this.formatEmailMessage(worklists, currentCount)
             };
             
-            await fs.writeJson('alert-status.json', alertData, { spaces: 2 });
-            this.log.info('Alert file created for email notification');
+            await fs.writeJson(this.alertFile, alertData, { spaces: 2 });
+            console.info('Alert file created for email notification');
             
         } catch (error) {
-            this.log.error(`Could not create alert file: ${error.message}`);
+            console.error(`Could not create alert file: ${error.message}`);
         }
     }
     
     formatEmailMessage(worklists, currentCount) {
-        /**
-         * Format message for email notification
-         */
-        const timestamp = new Date().toLocaleString('en-US', { 
-            timeZone: 'America/New_York',
-            dateStyle: 'full',
-            timeStyle: 'short'
-        });
-        
-        let message = `📊 Case Count Report\n`;
+        let message = `📊 Case Count Report - ${this.doctorName}\n`;
         message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
         
+        message += `👨‍⚕️ Rad: ${this.doctorName}\n\n`;
+        
         message += `📋 WORKLIST DETAILS:\n\n`;
-        message += `  • A##MY LIST: ${worklists['A##MY LIST']} cases\n`;
-        message += `  • CT ASSIGN: ${worklists['CT ASSIGN']} cases\n`;
-        message += `  • UNVIEWED: ${worklists['UNVIEWED']} cases\n\n`;
+        
+        // Dynamically add all worklists
+        for (const [worklistName, count] of Object.entries(worklists)) {
+            message += `  • ${worklistName}: ${count} cases\n`;
+        }
+        message += `\n`;
         
         message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
         message += `📈 TOTAL CASES: ${currentCount}\n`;
@@ -381,7 +341,7 @@ class CaseMonitor {
         /**
          * Main method to run a single check
          */
-        this.log.info('Starting case count check');
+        console.info('Starting case count check');
         
         let browser = null;
         try {
@@ -392,41 +352,38 @@ class CaseMonitor {
             // Login to portal
             const loginSuccess = await this.loginToPortal(page);
             if (!loginSuccess) {
-                this.log.error('Failed to login, aborting check');
+                console.error('Failed to login, aborting check');
                 return;
             }
             
             // Get current case count (returns object with worklists and total)
             const currentData = await this.getCaseCount(page);
             if (currentData === null) {
-                this.log.error('Failed to get case count, aborting check');
+                console.error('Failed to get case count, aborting check');
                 return;
             }
             
             const { worklists, total: currentCount } = currentData;
             
             
-            this.log.info(`Current case count: ${currentCount}`);
-            this.log.info(`  - A##MY LIST: ${worklists['A##MY LIST']}`);
-            this.log.info(`  - CT ASSIGN: ${worklists['CT ASSIGN']}`);
-            this.log.info(`  - UNVIEWED: ${worklists['UNVIEWED']}`);
+            console.info(`Current case count: ${currentCount}`);
             
             // Save to history
             await this.saveToHistory(worklists, currentCount);
             
-            // Create alert file for email (only if cases exist in ASS MY LIST OR CT ASSIGN)
-            const shouldSendEmail = worklists['A##MY LIST'] > 0 || worklists['CT ASSIGN'] > 0;
+            // Create alert file for email (only if cases exist in A##MY LIST)
+            const shouldSendEmail = worklists['A##MY LIST'] > 0;
             if (shouldSendEmail) {
                 await this.createAlertFile(worklists, currentCount);
-                this.log.info(`Alert created: ${currentCount} cases found (ASS MY LIST: ${worklists['A##MY LIST']}, CT ASSIGN: ${worklists['CT ASSIGN']})`);
+                console.info(`Alert created: ${currentCount} cases found (A##MY LIST: ${worklists['A##MY LIST']})`);
             } else {
-                this.log.info('No cases found in ASS MY LIST or CT ASSIGN, no alert sent');
+                console.info('No cases found in A##MY LIST, no alert sent');
             }
             
-            this.log.info('Check completed successfully');
+            console.info('Check completed successfully');
             
         } catch (error) {
-            this.log.error(`Check failed with error: ${error.message}`);
+            console.error(`Check failed with error: ${error.message}`);
             throw error;
         } finally {
             if (browser) {
@@ -438,11 +395,51 @@ class CaseMonitor {
 
 async function main() {
     /**
-     * Main entry point
+     * Main entry point - runs checks for multiple doctors sequentially
      */
     try {
-        const monitor = new CaseMonitor();
-        await monitor.runCheck();
+        // Define doctor accounts
+        const doctors = [
+            {
+                name: 'Dr. Abdaallah',
+                username: process.env.DOCTOR1_USERNAME,
+                password: process.env.DOCTOR1_PASSWORD
+            },
+            {
+                name: 'Dr. Amit',
+                username: process.env.DOCTOR2_USERNAME,
+                password: process.env.DOCTOR2_PASSWORD
+            }
+        ];
+        
+        console.log('='.repeat(60));
+        console.log('Starting automated case monitoring for multiple doctors');
+        console.log('='.repeat(60));
+        
+        // Run checks for each doctor sequentially
+        for (const doctor of doctors) {
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`Processing: ${doctor.name}`);
+            console.log('='.repeat(60));
+            
+            try {
+                const monitor = new CaseMonitor(doctor.name, doctor.username, doctor.password);
+                await monitor.runCheck();
+                console.log(`✅ Successfully completed check for ${doctor.name}`);
+            } catch (error) {
+                console.error(`❌ Check failed for ${doctor.name}: ${error.message}`);
+                // Continue with next doctor even if one fails
+            }
+            
+            // Wait a bit between doctors to ensure clean separation
+            console.log(`Waiting 3 seconds before next doctor...`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        
+        console.log(`\n${'='.repeat(60)}`);
+        console.log('All doctor checks completed');
+        console.log('='.repeat(60));
+        
     } catch (error) {
         console.error(`Application failed: ${error.message}`);
         process.exit(1);
