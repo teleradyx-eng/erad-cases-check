@@ -144,17 +144,20 @@ class CaseMonitor {
             
             // Find and click the worklist
             console.log(`Opening worklist: ${worklistName}`);
-            const worklist = await page.evaluateHandle((name) => {
+            const clicked = await page.evaluate((name) => {
                 const labels = Array.from(document.querySelectorAll('.gwt-Label.epserv-ListLabel'));
-                return labels.find(label => label.textContent.trim() === name);
+                const worklist = labels.find(label => label.textContent.trim() === name);
+                if (worklist) {
+                    worklist.click();
+                    return true;
+                }
+                return false;
             }, worklistName);
             
-            if (!worklist) {
+            if (!clicked) {
                 console.warn(`Could not find ${worklistName} worklist`);
                 return null;
             }
-            
-            await worklist.click();
             console.log(`Clicked ${worklistName}, waiting 15 seconds for data to load`);
             await page.waitForTimeout(15000);
             
@@ -217,7 +220,7 @@ class CaseMonitor {
             
             // Return null if all failed
             if (count1 === null && count2 === null) {
-                console.warning('Could not extract case counts from any worklist');
+                console.warn('Could not extract case counts from any worklist');
                 return null;
             }
             
@@ -352,15 +355,13 @@ class CaseMonitor {
             // Login to portal
             const loginSuccess = await this.loginToPortal(page);
             if (!loginSuccess) {
-                console.error('Failed to login, aborting check');
-                return;
+                throw new Error('Failed to login to portal');
             }
             
             // Get current case count (returns object with worklists and total)
             const currentData = await this.getCaseCount(page);
             if (currentData === null) {
-                console.error('Failed to get case count, aborting check');
-                return;
+                throw new Error('Failed to get case count from portal');
             }
             
             const { worklists, total: currentCount } = currentData;
@@ -416,6 +417,9 @@ async function main() {
         console.log('Starting automated case monitoring for multiple doctors');
         console.log('='.repeat(60));
         
+        let hasFailures = false;
+        const results = [];
+        
         // Run checks for each doctor sequentially
         for (const doctor of doctors) {
             console.log(`\n${'='.repeat(60)}`);
@@ -426,8 +430,11 @@ async function main() {
                 const monitor = new CaseMonitor(doctor.name, doctor.username, doctor.password);
                 await monitor.runCheck();
                 console.log(`✅ Successfully completed check for ${doctor.name}`);
+                results.push({ doctor: doctor.name, status: 'success' });
             } catch (error) {
                 console.error(`❌ Check failed for ${doctor.name}: ${error.message}`);
+                hasFailures = true;
+                results.push({ doctor: doctor.name, status: 'failed', error: error.message });
                 // Continue with next doctor even if one fails
             }
             
@@ -439,6 +446,19 @@ async function main() {
         console.log(`\n${'='.repeat(60)}`);
         console.log('All doctor checks completed');
         console.log('='.repeat(60));
+        
+        // Print summary
+        console.log('\n📊 SUMMARY:');
+        for (const result of results) {
+            const statusEmoji = result.status === 'success' ? '✅' : '❌';
+            console.log(`  ${statusEmoji} ${result.doctor}: ${result.status.toUpperCase()}${result.error ? ` - ${result.error}` : ''}`);
+        }
+        
+        // Exit with error if any check failed
+        if (hasFailures) {
+            console.error('\n⚠️  One or more checks failed. Exiting with error code.');
+            process.exit(1);
+        }
         
     } catch (error) {
         console.error(`Application failed: ${error.message}`);
