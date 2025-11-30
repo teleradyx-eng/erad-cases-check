@@ -158,8 +158,8 @@ class CaseMonitor {
                 console.warn(`Could not find ${worklistName} worklist`);
                 return null;
             }
-            console.log(`Clicked ${worklistName}, waiting 10 seconds for data to load`);
-            await page.waitForTimeout(10000);
+            console.log(`Clicked ${worklistName}, waiting 15 seconds for data to load`);
+            await page.waitForTimeout(15000);
             
             // Count cases in the worklist
             console.info(`Counting cases in ${worklistName}`);
